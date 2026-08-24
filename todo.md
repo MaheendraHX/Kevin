@@ -46,3 +46,18 @@
 - [x] Review summary, flashcard, and quiz export controls across light/dark desktop and mobile layouts, including success and error states.
 - [x] Add visible export success and error feedback plus automated validation of download initiation.
 - [x] Create an exportable study-pack checkpoint for Kevin.
+- [x] Define print-ready PDF and Anki tab-separated export formats that retain subject context and source references.
+- [x] Add ownership-checked PDF pack generation for summary and quiz study packs.
+- [x] Add Anki-compatible TSV export for source-grounded flashcards.
+- [x] Add responsive export controls and concise import/print guidance in the subject workspace.
+- [x] Add tests for PDF bytes, Anki rows, ownership, and download-ready payloads.
+- [x] Validate PDF and Anki controls across themes and responsive breakpoints.
+- [x] Add concise PDF print guidance beside summary and quiz export actions.
+- [x] Add a signed-in non-owner authorization test for protected study-pack exports.
+- [x] Complete and document light/dark desktop/mobile review of every PDF and Anki export surface.
+- [x] Place print instructions directly beside both Print PDF controls.
+- [x] Capture all PDF and Anki export surfaces in light and dark themes at desktop and mobile sizes.
+- [x] Exercise and validate Markdown, PDF, and Anki export success and error feedback.
+- [x] Place concise print instructions immediately beside the Summary and Quiz Print PDF controls.
+- [x] Add per-format export success and error validation for Markdown, PDF, and Anki paths.
+- [x] Create a final PDF and Anki export checkpoint for Kevin.

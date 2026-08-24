@@ -1,7 +1,8 @@
-export type DownloadableStudyPack = { fileName: string; content: string; contentType: string };
+export type DownloadableStudyPack = { fileName: string; content?: string; dataBase64?: string; contentType: string };
 
 export function downloadStudyPack(pack: DownloadableStudyPack, host = { document, URL }) {
-  const blob = new Blob([pack.content], { type: pack.contentType });
+  const binary = pack.dataBase64 ? Uint8Array.from(atob(pack.dataBase64), character => character.charCodeAt(0)) : pack.content || "";
+  const blob = new Blob([binary], { type: pack.contentType });
   const url = host.URL.createObjectURL(blob);
   const link = host.document.createElement("a");
   link.href = url;

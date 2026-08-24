@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildStudyPack } from "./studyPacks";
+import { buildAnkiPack, buildPdfStudyPack, buildStudyPack } from "./studyPacks";
 
 const citation = [{ materialTitle: "Week 3 notes", pageNumber: 4, excerpt: "A concise source excerpt." }];
 
@@ -17,5 +17,20 @@ describe("buildStudyPack", () => {
 
   it("does not produce an empty export", () => {
     expect(() => buildStudyPack({ subjectName: "Physics", kind: "flashcards", payload: { cards: [] } })).toThrow("Generate flashcards");
+  });
+
+  it("creates print-ready PDF bytes and an Anki-compatible tab-separated deck", async () => {
+    const pdf = await buildPdfStudyPack({ subjectName: "Physics", kind: "summary", payload: { summary: "Energy is conserved.", citations: citation } });
+    const anki = buildAnkiPack({ subjectName: "Physics", payload: { cards: [{ front: "Define energy.", back: "Capacity for work.", citations: citation }] } });
+    expect(Buffer.from(pdf.dataBase64, "base64").subarray(0, 4).toString()).toBe("%PDF");
+    expect(pdf.fileName).toBe("physics-summary-study-pack.pdf");
+    expect(anki.content).toContain("#separator:Tab");
+    expect(anki.content).toContain("Define energy.\tCapacity for work.");
+  });
+
+  it("returns format-specific errors instead of downloading incomplete exports", async () => {
+    expect(() => buildAnkiPack({ subjectName: "Physics", payload: { cards: [] } })).toThrow("Generate flashcards");
+    await expect(buildPdfStudyPack({ subjectName: "Physics", kind: "summary", payload: {} })).rejects.toThrow("Generate a summary");
+    await expect(buildPdfStudyPack({ subjectName: "Physics", kind: "quiz", payload: { questions: [] } })).rejects.toThrow("Generate a quiz");
   });
 });

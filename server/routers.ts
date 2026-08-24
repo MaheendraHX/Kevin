@@ -7,7 +7,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { storagePut } from "./storage";
 import { answerGroundedly, extractPdf, gradeQuizAnswers, makeChunks, makeFlashcards, makeQuiz, makeSummary, ocrScannedPdfPages, scheduleFlashcardReview } from "./study";
-import { buildStudyPack } from "./studyPacks";
+import { buildAnkiPack, buildPdfStudyPack, buildStudyPack } from "./studyPacks";
 import { COOKIE_NAME } from "../shared/const";
 
 const aiUsage = new Map<number, { startedAt: number; count: number }>();
@@ -165,11 +165,19 @@ export const appRouter = router({
         return card ? [{ schedule, studySetId: studySet.id, subjectId: subject.id, subjectName: subject.name, card }] : [];
       });
     }),
-    exportPack: protectedProcedure.input(z.object({ subjectId: z.number().int().positive(), kind: z.enum(["summary", "flashcards", "quiz"]) })).mutation(async ({ ctx, input }) => {
+    exportPack: protectedProcedure.input(z.object({ subjectId: z.number().int().positive(), kind: z.enum(["summary", "flashcards", "quiz"]), format: z.enum(["markdown", "pdf", "anki"]).default("markdown") })).mutation(async ({ ctx, input }) => {
       const workspace = requireOwned(await db.getWorkspace(ctx.user.id, input.subjectId), "This subject is unavailable.");
       const studySet = workspace.studySets.find(set => set.kind === input.kind);
       if (!studySet) throw new TRPCError({ code: "BAD_REQUEST", message: `Generate ${input.kind === "summary" ? "a summary" : input.kind === "quiz" ? "a quiz" : "flashcards"} before exporting it.` });
       try {
+        if (input.format === "anki") {
+          if (input.kind !== "flashcards") throw new Error("Anki export is available for flashcard decks only.");
+          return buildAnkiPack({ subjectName: workspace.subject.name, payload: studySet.payload });
+        }
+        if (input.format === "pdf") {
+          if (input.kind === "flashcards") throw new Error("Use Anki export for flashcard decks.");
+          return await buildPdfStudyPack({ subjectName: workspace.subject.name, kind: input.kind, payload: studySet.payload });
+        }
         return buildStudyPack({ subjectName: workspace.subject.name, kind: input.kind, payload: studySet.payload });
       } catch (error) {
         throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Kevin could not assemble that study pack." });
