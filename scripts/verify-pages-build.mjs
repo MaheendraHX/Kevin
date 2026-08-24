@@ -7,8 +7,8 @@ const entryFile = path.join(outputDir, "index.html");
 await access(entryFile);
 
 const html = await readFile(entryFile, "utf8");
-if (!html.includes("/Kevin/assets/")) {
-  throw new Error("GitHub Pages build did not generate repository-prefixed asset paths.");
+if (!html.includes('id="launch-kevin"') || !html.includes("https://kevinai-vjva5vux.manus.space")) {
+  throw new Error("GitHub Pages artifact does not provide the verified full-stack Kevin destination.");
 }
 
-console.log("GitHub Pages artifact contains index.html with repository-prefixed assets.");
+console.log("GitHub Pages artifact contains an accurate full-stack Kevin destination notice.");
