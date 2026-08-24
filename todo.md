@@ -61,3 +61,6 @@
 - [x] Place concise print instructions immediately beside the Summary and Quiz Print PDF controls.
 - [x] Add per-format export success and error validation for Markdown, PDF, and Anki paths.
 - [x] Create a final PDF and Anki export checkpoint for Kevin.
+- [ ] Create a public GitHub repository for Kevin.
+- [ ] Commit and push the current validated Kevin source code.
+- [ ] Verify the public repository contents and share its URL.
