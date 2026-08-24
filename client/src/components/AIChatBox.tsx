@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { Loader2, Send, User, Sparkles } from "lucide-react";
+import { FileText, Loader2, Send, User, Sparkles } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { Streamdown } from "streamdown";
 
@@ -12,6 +12,11 @@ import { Streamdown } from "streamdown";
 export type Message = {
   role: "system" | "user" | "assistant";
   content: string;
+  citations?: Array<{
+    materialTitle: string;
+    pageNumber: number | null;
+    excerpt: string;
+  }>;
 };
 
 export type AIChatBoxProps = {
@@ -261,8 +266,24 @@ export function AIChatBox({
                       )}
                     >
                       {message.role === "assistant" ? (
-                        <div className="prose prose-sm dark:prose-invert max-w-none">
-                          <Streamdown>{message.content}</Streamdown>
+                        <div className="space-y-3">
+                          <div className="prose prose-sm dark:prose-invert max-w-none">
+                            <Streamdown>{message.content}</Streamdown>
+                          </div>
+                          {message.citations?.length ? (
+                            <div className="flex flex-wrap gap-1.5 border-t border-border/60 pt-2.5">
+                              {message.citations.map((citation, citationIndex) => (
+                                <span
+                                  key={`${citation.materialTitle}-${citation.pageNumber}-${citationIndex}`}
+                                  title={citation.excerpt}
+                                  className="inline-flex items-center gap-1 rounded-full border border-primary/15 bg-background/60 px-2 py-1 text-[11px] font-medium text-muted-foreground"
+                                >
+                                  <FileText className="size-3 text-primary" />
+                                  {citation.materialTitle}{citation.pageNumber ? ` · p. ${citation.pageNumber}` : ""}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                       ) : (
                         <p className="whitespace-pre-wrap text-sm">
