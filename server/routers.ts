@@ -5,8 +5,8 @@ import * as db from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
-import { storagePut } from "./storage";
-import { answerGroundedly, extractPdf, gradeQuizAnswers, makeChunks, makeFlashcards, makeQuiz, makeSummary, ocrScannedPdfPages, scheduleFlashcardReview } from "./study";
+import { storageGetSignedUrl, storagePut } from "./storage";
+import { answerGroundedly, extractPdf, gradeQuizAnswers, hasUsablePdfText, makeChunks, makeFlashcards, makeQuiz, makeSummary, MAX_PDF_PAGES, ocrScannedPdfPages, scheduleFlashcardReview } from "./study";
 import { buildAnkiPack, buildPdfStudyPack, buildStudyPack } from "./studyPacks";
 import { COOKIE_NAME } from "../shared/const";
 
@@ -84,10 +84,11 @@ export const appRouter = router({
       } catch {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Kevin could not read this PDF. Try a text-based, unprotected PDF instead." });
       }
-      const extractedPageNumbers = new Set(parsed.pages.map(page => page.pageNumber));
-      const missingTextPages = Array.from({ length: Math.min(parsed.totalPages, 12) }, (_, index) => index + 1).filter(pageNumber => !extractedPageNumbers.has(pageNumber));
+      const usefulNativePages = parsed.pages.filter(page => hasUsablePdfText(page.text));
+      const extractedPageNumbers = new Set(usefulNativePages.map(page => page.pageNumber));
+      const missingTextPages = Array.from({ length: Math.min(parsed.totalPages, MAX_PDF_PAGES) }, (_, index) => index + 1).filter(pageNumber => !extractedPageNumbers.has(pageNumber));
       const ocrPages = missingTextPages.length ? await ocrScannedPdfPages(file, missingTextPages) : [];
-      const pages = [...parsed.pages, ...ocrPages].sort((a, b) => a.pageNumber - b.pageNumber);
+      const pages = [...usefulNativePages, ...ocrPages].sort((a, b) => a.pageNumber - b.pageNumber);
       const chunks = pages.flatMap((page, pageIndex) => makeChunks(page.text, page.pageNumber, pageIndex * 100));
       const safeName = safeFileName(input.fileName);
       const stored = await storagePut(`study-materials/${ctx.user.id}/${Date.now()}-${nanoid(8)}-${safeName}`, file, "application/pdf");
@@ -107,6 +108,23 @@ export const appRouter = router({
         chunks,
       });
       return { material: requireOwned(material, "Your PDF could not be saved."), truncated: parsed.truncated, ocrPages: ocrPages.length };
+    }),
+    reprocessPdf: protectedProcedure.input(z.object({ materialId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const material = requireOwned(await db.getMaterialForOwner(ctx.user.id, input.materialId), "This material is unavailable.");
+      if (material.sourceType !== "pdf" || !material.storageKey) throw new TRPCError({ code: "BAD_REQUEST", message: "Only stored PDF sources can be reprocessed." });
+      const signedUrl = await storageGetSignedUrl(material.storageKey);
+      const response = await fetch(signedUrl);
+      if (!response.ok) throw new TRPCError({ code: "BAD_REQUEST", message: "Kevin could not retrieve this stored PDF for reprocessing." });
+      const file = Buffer.from(await response.arrayBuffer());
+      const parsed = await extractPdf(file);
+      const usefulNativePages = parsed.pages.filter(page => hasUsablePdfText(page.text));
+      const extractedPageNumbers = new Set(usefulNativePages.map(page => page.pageNumber));
+      const missingTextPages = Array.from({ length: Math.min(parsed.totalPages, MAX_PDF_PAGES) }, (_, index) => index + 1).filter(pageNumber => !extractedPageNumbers.has(pageNumber));
+      const ocrPages = missingTextPages.length ? await ocrScannedPdfPages(file, missingTextPages) : [];
+      const pages = [...usefulNativePages, ...ocrPages].sort((a, b) => a.pageNumber - b.pageNumber);
+      const chunks = pages.flatMap((page, pageIndex) => makeChunks(page.text, page.pageNumber, pageIndex * 100));
+      const updated = await db.replaceMaterialExtraction(ctx.user.id, material.id, { pageCount: parsed.totalPages, extractedText: pages.map(page => page.text).join("\n\n"), processingStatus: chunks.length ? "ready" : "needs_attention", chunks });
+      return { material: requireOwned(updated, "Your PDF could not be updated."), truncated: parsed.truncated, ocrPages: ocrPages.length };
     }),
     updateMaterial: protectedProcedure.input(z.object({ materialId: z.number().int().positive(), title: z.string().trim().min(2).max(180).optional(), folder: z.string().trim().max(120).nullable().optional(), tags: z.array(z.string().trim().min(1).max(40)).max(12).optional() })).mutation(async ({ ctx, input }) => {
       requireOwned(await db.getMaterialForOwner(ctx.user.id, input.materialId), "This material is unavailable.");

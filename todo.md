@@ -84,3 +84,11 @@
 - [x] Checkpoint and push the verified interaction fix to the public repository.
 - [x] Replace the misleading GitHub Pages application facade with an accurate full-stack hosting notice and working destination link.
 - [x] Validate the public Pages notice and the managed full-stack Kevin destination.
+- [x] Support selecting multiple module PDFs for one batch material import.
+- [x] Show per-module queue, progress, completion, and retry feedback during batch import.
+- [x] Add automated and browser validation for multi-module intake.
+- [ ] Checkpoint and push the verified multi-module upload enhancement.
+- [x] Diagnose extraction failure for the provided TOC Module 2 PDF.
+- [x] Improve PDF text extraction and recovery for files with difficult layouts or scanned content.
+- [x] Add regression coverage and validate successful import of the provided Module 2 PDF.
+- [x] Browser-test a real two-file module batch and confirm both queue and import independently.

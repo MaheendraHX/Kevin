@@ -108,6 +108,18 @@ export async function updateMaterialMetadata(ownerId: number, materialId: number
   return getMaterialForOwner(ownerId, materialId);
 }
 
+export async function replaceMaterialExtraction(ownerId: number, materialId: number, input: { pageCount: number; extractedText: string; processingStatus: "ready" | "needs_attention"; chunks: Array<{ pageNumber: number | null; chunkIndex: number; content: string }> }) {
+  const db = await requireDb();
+  const material = await getMaterialForOwner(ownerId, materialId);
+  if (!material) return undefined;
+  await db.delete(materialChunks).where(and(eq(materialChunks.materialId, materialId), eq(materialChunks.ownerId, ownerId)));
+  if (input.chunks.length) {
+    await db.insert(materialChunks).values(input.chunks.map(chunk => ({ materialId, subjectId: material.subjectId, ownerId, pageNumber: chunk.pageNumber, chunkIndex: chunk.chunkIndex, content: chunk.content })));
+  }
+  await db.update(materials).set({ pageCount: input.pageCount, extractedText: input.extractedText, processingStatus: input.processingStatus }).where(and(eq(materials.id, materialId), eq(materials.ownerId, ownerId)));
+  return getMaterialForOwner(ownerId, materialId);
+}
+
 export async function archiveMaterial(ownerId: number, materialId: number, archived: boolean) {
   const db = await requireDb();
   await db.update(materials).set({ archivedAt: archived ? new Date() : null }).where(and(eq(materials.id, materialId), eq(materials.ownerId, ownerId)));

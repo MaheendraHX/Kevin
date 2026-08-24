@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { downloadStudyPack } from "@/lib/studyPackDownload";
+import { mergeUniquePdfFiles } from "@/lib/materialBatch";
 import { ArrowLeft, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Download, FileText, Layers3, Loader2, MessageCircleQuestion, Plus, RotateCcw, Sparkles, UploadCloud } from "lucide-react";
 import { ChangeEvent, FormEvent, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -45,20 +46,59 @@ function CitationTrail({ items }: { items: Citation[] }) {
   return <div className="mt-3 flex flex-wrap gap-1.5">{items.map((citation, index) => <span key={`${citation.materialTitle}-${index}`} title={citation.excerpt} className="inline-flex items-center gap-1 rounded-full border border-primary/10 bg-white/65 px-2 py-1 text-[10px] font-medium text-muted-foreground"><FileText className="size-3 text-primary" />{citation.materialTitle}{citation.pageNumber ? ` · p. ${citation.pageNumber}` : ""}</span>)}</div>;
 }
 
+type BatchPdfItem = { id: string; file: File; status: "queued" | "uploading" | "complete" | "failed"; error?: string; truncated?: boolean };
+
+function readPdfAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("The file could not be read."));
+    reader.onerror = () => reject(new Error("Your browser could not read this file. Try choosing it again or paste the key passages as text."));
+    reader.readAsDataURL(file);
+  });
+}
+
 function AddMaterialDialog({ subjectId, onDone }: { subjectId: number; onDone: () => void }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"pdf" | "text">("pdf");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [pdfItems, setPdfItems] = useState<BatchPdfItem[]>([]);
+  const [batchNotice, setBatchNotice] = useState<string | null>(null);
   const addText = trpc.study.addTextMaterial.useMutation({ onSuccess: () => { toast.success("Material saved and ready to study."); setOpen(false); setTitle(""); setContent(""); onDone(); }, onError: error => toast.error(error.message) });
-  const uploadPdf = trpc.study.uploadPdf.useMutation({ onSuccess: result => { setUploadError(null); toast.success(result.truncated ? "PDF saved. Kevin indexed its first 48 pages." : "PDF saved and ready to study."); setOpen(false); setFile(null); onDone(); }, onError: error => { setUploadError(uploadRecoveryMessage(error.message)); toast.error("Your PDF needs one more step."); } });
-  const isPending = addText.isPending || uploadPdf.isPending;
-  const chooseFile = (event: ChangeEvent<HTMLInputElement>) => { const chosen = event.target.files?.[0] || null; if (!chosen) return; if (chosen.type !== "application/pdf") { toast.error("Choose a PDF file to continue."); event.target.value = ""; return; } setUploadError(null); setFile(chosen); setTitle(chosen.name.replace(/\.pdf$/i, "")); };
-  const sendPdf = () => { if (!file) { toast.error("Choose a PDF to continue."); return; } setUploadError(null); const reader = new FileReader(); reader.onload = () => typeof reader.result === "string" && uploadPdf.mutate({ subjectId, fileName: file.name, dataUrl: reader.result }); reader.onerror = () => setUploadError("Your browser could not read this file. Try choosing the PDF again or paste the key passages as text."); reader.readAsDataURL(file); };
-  const submit = (event: FormEvent) => { event.preventDefault(); if (mode === "text") { addText.mutate({ subjectId, title, content }); return; } sendPdf(); };
-  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button className="rounded-full"><Plus className="mr-2 size-4" /> Add material</Button></DialogTrigger><DialogContent className="border-white/80 bg-[#fcfbff]/95 sm:max-w-lg"><form onSubmit={submit} className="space-y-5"><DialogHeader><DialogTitle className="font-serif text-3xl text-[#484156]">Bring in your material</DialogTitle><DialogDescription>Kevin will keep this source inside the current subject and use it only for grounded study support.</DialogDescription></DialogHeader><Tabs value={mode} onValueChange={value => { setMode(value as "pdf" | "text"); setUploadError(null); }}><TabsList className="grid w-full grid-cols-2"><TabsTrigger value="pdf">PDF upload</TabsTrigger><TabsTrigger value="text">Paste text</TabsTrigger></TabsList><TabsContent value="pdf" className="space-y-4 pt-4"><Label htmlFor="pdf-upload" className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-primary/25 bg-[#f7f3fd] p-5 text-center transition-colors hover:bg-[#f3edfc]"><UploadCloud className="size-7 text-primary/70" /><span className="mt-3 font-medium text-[#534b61]">{file ? file.name : "Choose a text-based PDF"}</span><span className="mt-1 text-xs text-muted-foreground">Stored securely in this subject · Kevin extracts readable pages for grounded study tools</span><Input id="pdf-upload" type="file" accept="application/pdf" className="sr-only" onChange={chooseFile} /></Label><div className="space-y-2"><Label htmlFor="pdf-title">Material title</Label><Input id="pdf-title" value={title} onChange={event => setTitle(event.target.value)} placeholder="Lecture notes" maxLength={180} required /></div>{uploadError ? <div role="alert" className="rounded-2xl border border-destructive/20 bg-destructive/5 p-4 text-sm leading-6 text-destructive"><p>{uploadError}</p><div className="mt-3 flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={sendPdf} disabled={!file || uploadPdf.isPending} className="rounded-full border-destructive/30 bg-white/70 text-destructive hover:bg-white">Try this PDF again</Button><Button type="button" variant="ghost" onClick={() => { setMode("text"); setUploadError(null); }} className="rounded-full text-destructive">Paste text instead</Button></div></div> : null}</TabsContent><TabsContent value="text" className="space-y-4 pt-4"><div className="space-y-2"><Label htmlFor="text-title">Material title</Label><Input id="text-title" value={title} onChange={event => setTitle(event.target.value)} placeholder="Week 4 reading notes" maxLength={180} required /></div><div className="space-y-2"><Label htmlFor="material-text">Your notes or source text</Label><Textarea id="material-text" value={content} onChange={event => setContent(event.target.value)} placeholder="Paste at least a short passage of study material…" className="min-h-48" maxLength={90000} required /><p className="text-right text-xs text-muted-foreground">{content.length.toLocaleString()} / 90,000</p></div></TabsContent></Tabs><DialogFooter><Button type="submit" disabled={isPending || (mode === "pdf" ? !file || !title.trim() : content.trim().length < 80 || !title.trim())} className="rounded-full px-5">{isPending ? <><Loader2 className="mr-2 size-4 animate-spin" /> Preparing source…</> : "Save material"}</Button></DialogFooter></form></DialogContent></Dialog>;
+  const uploadPdf = trpc.study.uploadPdf.useMutation();
+  const pendingPdfItems = pdfItems.filter(item => item.status === "queued" || item.status === "failed");
+  const isPending = addText.isPending || pdfItems.some(item => item.status === "uploading");
+  const setItem = (id: string, patch: Partial<BatchPdfItem>) => setPdfItems(items => items.map(item => item.id === id ? { ...item, ...patch } : item));
+  const chooseFiles = (event: ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(event.target.files || []);
+    const additions = mergeUniquePdfFiles(pdfItems.map(item => item.file), selected);
+    if (selected.length > additions.length) setBatchNotice("Only unique PDF files were added to the module queue.");
+    if (!additions.length && selected.length) toast.error("Choose one or more PDF files to continue.");
+    if (additions.length) setPdfItems(items => [...items, ...additions.map(file => ({ id: crypto.randomUUID(), file, status: "queued" as const }))]);
+    event.target.value = "";
+  };
+  const uploadItems = async (ids: string[]) => {
+    const items = pdfItems.filter(item => ids.includes(item.id) && item.status !== "complete");
+    if (!items.length) return;
+    let completed = 0;
+    setBatchNotice(null);
+    for (const item of items) {
+      setItem(item.id, { status: "uploading", error: undefined });
+      try {
+        const dataUrl = await readPdfAsDataUrl(item.file);
+        const result = await uploadPdf.mutateAsync({ subjectId, fileName: item.file.name, dataUrl });
+        setItem(item.id, { status: "complete", truncated: result.truncated });
+        completed += 1;
+      } catch (error) {
+        const message = error instanceof Error ? uploadRecoveryMessage(error.message) : "Kevin could not save this PDF just now. Try this module again.";
+        setItem(item.id, { status: "failed", error: message });
+      }
+    }
+    onDone();
+    if (completed) toast.success(`${completed} module${completed === 1 ? "" : "s"} added to this subject.`);
+  };
+  const submit = (event: FormEvent) => { event.preventDefault(); if (mode === "text") { addText.mutate({ subjectId, title, content }); return; } void uploadItems(pendingPdfItems.map(item => item.id)); };
+  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button className="rounded-full"><Plus className="mr-2 size-4" /> Add material</Button></DialogTrigger><DialogContent className="border-white/80 bg-[#fcfbff]/95 sm:max-w-lg"><form onSubmit={submit} className="space-y-5"><DialogHeader><DialogTitle className="font-serif text-3xl text-[#484156]">Bring in your materials</DialogTitle><DialogDescription>Add one module or a whole set of PDFs. Kevin keeps every file as its own source inside this subject.</DialogDescription></DialogHeader><Tabs value={mode} onValueChange={value => { setMode(value as "pdf" | "text"); setBatchNotice(null); }}><TabsList className="grid w-full grid-cols-2"><TabsTrigger value="pdf">PDF modules</TabsTrigger><TabsTrigger value="text">Paste text</TabsTrigger></TabsList><TabsContent value="pdf" className="space-y-4 pt-4"><Label htmlFor="pdf-upload" className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-primary/25 bg-[#f7f3fd] p-5 text-center transition-colors hover:bg-[#f3edfc]"><UploadCloud className="size-7 text-primary/70" /><span className="mt-3 font-medium text-[#534b61]">{pdfItems.length ? `${pdfItems.length} module${pdfItems.length === 1 ? "" : "s"} queued` : "Choose one or more text-based PDFs"}</span><span className="mt-1 text-xs text-muted-foreground">Each module becomes its own source. Kevin imports them one at a time so a failed file never blocks the rest.</span><Input id="pdf-upload" type="file" accept="application/pdf,.pdf" multiple className="sr-only" onChange={chooseFiles} /></Label>{batchNotice ? <p role="status" className="rounded-2xl bg-[#f5f0fc] p-3 text-sm text-[#625a6d]">{batchNotice}</p> : null}{pdfItems.length ? <div className="max-h-52 space-y-2 overflow-y-auto pr-1" aria-live="polite">{pdfItems.map(item => <div key={item.id} className="rounded-2xl border border-white bg-white/70 p-3"><div className="flex items-center justify-between gap-3"><p className="min-w-0 truncate text-sm font-semibold text-[#51495f]">{item.file.name}</p><span className={`shrink-0 text-xs font-medium ${item.status === "complete" ? "text-[#4d806f]" : item.status === "failed" ? "text-destructive" : item.status === "uploading" ? "text-primary" : "text-muted-foreground"}`}>{item.status === "complete" ? item.truncated ? "Saved · first 48 pages" : "Saved" : item.status === "failed" ? "Needs retry" : item.status === "uploading" ? "Importing…" : "Ready"}</span></div>{item.error ? <div className="mt-2 flex flex-wrap items-center gap-2 text-xs leading-5 text-destructive"><span>{item.error}</span><Button type="button" size="sm" variant="outline" onClick={() => void uploadItems([item.id])} disabled={isPending} className="rounded-full border-destructive/30 bg-white text-destructive">Try this module again</Button></div> : null}{item.status !== "uploading" && item.status !== "complete" ? <Button type="button" size="sm" variant="ghost" onClick={() => setPdfItems(items => items.filter(candidate => candidate.id !== item.id))} className="mt-1 h-7 rounded-full px-2 text-xs text-muted-foreground">Remove</Button> : null}</div>)}</div> : null}</TabsContent><TabsContent value="text" className="space-y-4 pt-4"><div className="space-y-2"><Label htmlFor="text-title">Material title</Label><Input id="text-title" value={title} onChange={event => setTitle(event.target.value)} placeholder="Week 4 reading notes" maxLength={180} required /></div><div className="space-y-2"><Label htmlFor="material-text">Your notes or source text</Label><Textarea id="material-text" value={content} onChange={event => setContent(event.target.value)} placeholder="Paste at least a short passage of study material…" className="min-h-48" maxLength={90000} required /><p className="text-right text-xs text-muted-foreground">{content.length.toLocaleString()} / 90,000</p></div></TabsContent></Tabs><DialogFooter><Button type="submit" disabled={isPending || (mode === "pdf" ? !pendingPdfItems.length : content.trim().length < 80 || !title.trim())} className="rounded-full px-5">{isPending ? <><Loader2 className="mr-2 size-4 animate-spin" /> Importing modules…</> : mode === "pdf" ? `Import ${pendingPdfItems.length || ""} module${pendingPdfItems.length === 1 ? "" : "s"}` : "Save material"}</Button></DialogFooter></form></DialogContent></Dialog>;
 }
 
 export default function SubjectWorkspace() {

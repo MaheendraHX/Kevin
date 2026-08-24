@@ -19,7 +19,7 @@ vi.mock("pdf-parse", () => ({
   },
 }));
 
-import { answerGroundedly, extractPdf, makeFlashcards, makeQuiz, makeSummary, ocrScannedPdfPages, selectRepresentativeSources, type SourceChunk } from "./study";
+import { answerGroundedly, extractPdf, hasUsablePdfText, makeFlashcards, makeQuiz, makeSummary, ocrScannedPdfPages, selectRepresentativeSources, type SourceChunk } from "./study";
 
 const sources: SourceChunk[] = Array.from({ length: 16 }, (_, index) => ({
   id: index + 1,
@@ -37,7 +37,7 @@ function citationIds(value: { citations: Array<{ chunkId: number }> } | Array<{ 
 describe("grounded AI output boundaries", () => {
   beforeEach(() => {
     mocks.invokeLLM.mockReset(); mocks.listLLMModels.mockReset(); mocks.getInfo.mockReset(); mocks.getText.mockReset(); mocks.getScreenshot.mockReset(); mocks.destroy.mockReset();
-    mocks.listLLMModels.mockResolvedValue({ data: [{ id: "gpt-5-mini", object: "model", created: 0, owned_by: "openai" }] });
+    mocks.listLLMModels.mockResolvedValue({ data: [{ id: "gemini-3-flash-preview", object: "model", created: 0, owned_by: "google" }, { id: "gpt-5-mini", object: "model", created: 0, owned_by: "openai" }] });
     mocks.invokeLLM.mockImplementation(async (params: { response_format?: { json_schema: { name: string } } }) => {
       if (!params.response_format) return { choices: [{ message: { content: "Scanned page transcription with a readable definition and supporting context." } }] };
       const name = params.response_format.json_schema.name;
@@ -76,11 +76,19 @@ describe("grounded AI output boundaries", () => {
     expect(mocks.destroy).toHaveBeenCalledOnce();
   });
 
-  it("uses page images as a fallback when a scanned PDF needs OCR", async () => {
+  it("does not mistake short scan metadata for readable study text", () => {
+    expect(hasUsablePdfText("TOC Module 2")).toBe(false);
+    expect(hasUsablePdfText("A complete study explanation with enough meaningful source content to create a grounded chunk for later review.")).toBe(true);
+  });
+
+  it("uses a handwriting-aware vision model across every supplied scanned page", async () => {
     mocks.getScreenshot.mockResolvedValue({ pages: [{ dataUrl: "data:image/png;base64,scan" }] });
-    const result = await ocrScannedPdfPages(Buffer.from("pretend-pdf"), [1, 2]);
-    expect(result).toHaveLength(2);
+    const scannedPages = Array.from({ length: 13 }, (_, index) => index + 1);
+    const result = await ocrScannedPdfPages(Buffer.from("pretend-pdf"), scannedPages);
+    expect(result).toHaveLength(13);
     expect(result[0]).toMatchObject({ pageNumber: 1 });
-    expect(mocks.getScreenshot).toHaveBeenCalledTimes(2);
+    expect(mocks.getScreenshot).toHaveBeenCalledTimes(13);
+    expect(mocks.invokeLLM.mock.calls.at(-1)?.[0]).toMatchObject({ model: "gemini-3-flash-preview", max_tokens: 2200 });
+    expect(JSON.stringify(mocks.invokeLLM.mock.calls.at(-1)?.[0])).toContain("handwritten");
   });
 });

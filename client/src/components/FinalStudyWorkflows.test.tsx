@@ -13,6 +13,7 @@ vi.mock("@/lib/trpc", () => ({
       archiveMaterial: { useMutation: () => state.mutation },
       deleteMaterial: { useMutation: () => state.mutation },
       updateMaterial: { useMutation: () => state.mutation },
+      reprocessPdf: { useMutation: () => state.mutation },
       insights: { useQuery: () => state.insights },
       createExam: { useMutation: () => state.mutation },
       deleteExam: { useMutation: () => state.mutation },

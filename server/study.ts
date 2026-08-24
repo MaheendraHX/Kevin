@@ -18,9 +18,11 @@ export type Citation = {
   excerpt: string;
 };
 
-const MAX_PDF_PAGES = 48;
-const MAX_OCR_PAGES = 12;
+export const MAX_PDF_PAGES = 60;
+const MAX_OCR_PAGES = MAX_PDF_PAGES;
+const OCR_CONCURRENCY = 6;
 let preferredModel: string | undefined;
+let preferredOcrModel: string | undefined;
 
 async function getPreferredStudyModel() {
   if (preferredModel) return preferredModel;
@@ -37,6 +39,19 @@ async function getPreferredStudyModel() {
   return preferredModel;
 }
 
+async function getPreferredOcrModel() {
+  if (preferredOcrModel) return preferredOcrModel;
+  try {
+    const catalog = await listLLMModels();
+    preferredOcrModel = catalog.data.find(model => model.id === "gemini-3-flash-preview")?.id
+      || catalog.data.find(model => model.id === "gpt-5-mini")?.id
+      || catalog.data[0]?.id;
+  } catch {
+    preferredOcrModel = "gpt-5-mini";
+  }
+  return preferredOcrModel;
+}
+
 export function makeChunks(text: string, pageNumber: number | null, startIndex: number) {
   const cleaned = text.replace(/\s+/g, " ").trim();
   const chunks: Array<{ pageNumber: number | null; chunkIndex: number; content: string }> = [];
@@ -48,6 +63,10 @@ export function makeChunks(text: string, pageNumber: number | null, startIndex: 
     if (start + chunkSize >= cleaned.length) break;
   }
   return chunks;
+}
+
+export function hasUsablePdfText(text: string) {
+  return text.replace(/\s+/g, " ").trim().length >= 80;
 }
 
 export async function extractPdf(buffer: Buffer) {
@@ -71,30 +90,44 @@ export async function ocrScannedPdfPages(buffer: Buffer, pageNumbers: number[]) 
   const parser = new PDFParse({ data: buffer });
   const pages: Array<{ pageNumber: number; text: string }> = [];
   try {
-    const model = await getPreferredStudyModel();
-    for (const pageNumber of pageNumbers.slice(0, MAX_OCR_PAGES)) {
+    const model = await getPreferredOcrModel();
+    const work = pageNumbers.slice(0, MAX_OCR_PAGES);
+    const renderedPages: Array<{ pageNumber: number; dataUrl: string }> = [];
+    for (const pageNumber of work) {
       try {
         const screenshot = await parser.getScreenshot({ partial: [pageNumber], imageDataUrl: true });
         const page = screenshot.pages?.[0] as { dataUrl?: string } | undefined;
-        if (!page?.dataUrl) continue;
-        const response = await invokeLLM({
-          model,
-          max_tokens: 1800,
-          messages: [
-            { role: "system", content: "You are an exact OCR assistant. Transcribe the readable study text from this scanned PDF page. Preserve headings, bullets, formulas, and definitions. Return only the transcription. If no readable text is present, return an empty response." },
-            { role: "user", content: [{ type: "image_url", image_url: { url: page.dataUrl, detail: "high" } }] },
-          ],
-        });
-        const content = response.choices[0]?.message.content;
-        const text = typeof content === "string"
-          ? content.trim()
-          : (content || []).filter(item => item.type === "text").map(item => item.text).join("\n").trim();
-        if (text.length >= 40) pages.push({ pageNumber, text });
-      } catch {
-        // OCR is best-effort; extracted text from other pages remains usable.
+        if (page?.dataUrl) renderedPages.push({ pageNumber, dataUrl: page.dataUrl });
+      } catch (error) {
+        console.warn(`[OCR] Could not render scanned PDF page ${pageNumber}: ${error instanceof Error ? error.message : "Unknown error"}`);
       }
     }
-    return pages;
+    let nextIndex = 0;
+    const transcribeNextPage = async () => {
+      while (nextIndex < renderedPages.length) {
+        const page = renderedPages[nextIndex++];
+        try {
+          const response = await invokeLLM({
+            model,
+            max_tokens: 2200,
+            messages: [
+              { role: "system", content: "You are an exact OCR assistant for handwritten and printed study notes. Transcribe all readable text faithfully. Preserve headings, bullets, formulas, definitions, notation, and page structure. Do not summarize or invent missing words; use [illegible] only for text you cannot read. Return only the transcription. If no readable text is present, return an empty response." },
+              { role: "user", content: [{ type: "image_url", image_url: { url: page.dataUrl, detail: "high" } }] },
+            ],
+          });
+          const content = response.choices[0]?.message.content;
+          const text = typeof content === "string"
+            ? content.trim()
+            : (content || []).filter(item => item.type === "text").map(item => item.text).join("\n").trim();
+          if (text.length >= 40) pages.push({ pageNumber: page.pageNumber, text });
+        } catch (error) {
+          console.warn(`[OCR] Could not recover scanned PDF page ${page.pageNumber}: ${error instanceof Error ? error.message : "Unknown error"}`);
+          // OCR is best-effort; extracted text from other pages remains usable.
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(OCR_CONCURRENCY, renderedPages.length) }, () => transcribeNextPage()));
+    return pages.sort((a, b) => a.pageNumber - b.pageNumber);
   } finally {
     await parser.destroy();
   }
