@@ -87,7 +87,7 @@
 - [x] Support selecting multiple module PDFs for one batch material import.
 - [x] Show per-module queue, progress, completion, and retry feedback during batch import.
 - [x] Add automated and browser validation for multi-module intake.
-- [ ] Checkpoint and push the verified multi-module upload enhancement.
+- [x] Checkpoint and push the verified multi-module upload enhancement.
 - [x] Diagnose extraction failure for the provided TOC Module 2 PDF.
 - [x] Improve PDF text extraction and recovery for files with difficult layouts or scanned content.
 - [x] Add regression coverage and validate successful import of the provided Module 2 PDF.
