@@ -8,4 +8,10 @@ describe("study router authorization", () => {
     const caller = appRouter.createCaller(ctx);
     await expect(caller.study.dashboard()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
+
+  it("blocks unauthenticated callers before exporting a study pack", async () => {
+    const ctx: TrpcContext = { user: null, req: {} as TrpcContext["req"], res: {} as TrpcContext["res"] };
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.study.exportPack({ subjectId: 1, kind: "summary" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
 });

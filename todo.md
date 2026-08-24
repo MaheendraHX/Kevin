@@ -38,3 +38,11 @@
 - [x] Add UI tests for weekly digest and due-review states, including empty and error recovery behavior.
 - [x] Add UI coverage for the due-review banner, entry action, and empty recovery state.
 - [x] Create a final enhancement checkpoint for Kevin.
+- [x] Define the content and source-citation rules for summary, flashcard, and quiz study-pack exports.
+- [x] Generate ownership-checked downloadable study packs on the server.
+- [x] Add subject workspace controls for summary, flashcard, and quiz-with-answer-key exports.
+- [x] Add tests for export authorization, content assembly, and download-ready payloads.
+- [x] Validate export controls across themes and responsive breakpoints.
+- [x] Review summary, flashcard, and quiz export controls across light/dark desktop and mobile layouts, including success and error states.
+- [x] Add visible export success and error feedback plus automated validation of download initiation.
+- [x] Create an exportable study-pack checkpoint for Kevin.
