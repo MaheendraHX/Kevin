@@ -81,6 +81,6 @@
 - [x] Diagnose why Kevin workspace controls are non-responsive in the browser.
 - [x] Repair the affected interaction handlers and client runtime behavior.
 - [x] Add regression coverage and browser validation for repaired controls.
-- [ ] Checkpoint and push the verified interaction fix to the public repository.
+- [x] Checkpoint and push the verified interaction fix to the public repository.
 - [x] Replace the misleading GitHub Pages application facade with an accurate full-stack hosting notice and working destination link.
 - [x] Validate the public Pages notice and the managed full-stack Kevin destination.
