@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkAnswer, gradeQuizAnswers, makeChunks, resolveCitations, selectRelevantSources, selectRepresentativeSources, type SourceChunk } from "./study";
+import { checkAnswer, gradeQuizAnswers, makeChunks, resolveCitations, scheduleFlashcardReview, selectRelevantSources, selectRepresentativeSources, type SourceChunk } from "./study";
 
 const sources: SourceChunk[] = [
   { id: 1, materialId: 1, materialTitle: "Attention notes", pageNumber: 2, chunkIndex: 0, content: "Attention selects information for further processing. Selective attention can reduce distraction while working on a task." },
@@ -51,5 +51,16 @@ describe("quiz answer checking", () => {
     expect(result.score).toBe(2);
     expect(result.feedback).toHaveLength(2);
     expect(result.feedback[1].citations[0].chunkId).toBe(3);
+  });
+
+  it("schedules hard, easy, and repeat reviews at increasing recall intervals", () => {
+    const reviewedAt = new Date("2026-08-24T00:00:00.000Z");
+    const retry = scheduleFlashcardReview(undefined, "review_again", reviewedAt);
+    const hard = scheduleFlashcardReview(undefined, "hard", reviewedAt);
+    const easy = scheduleFlashcardReview({ repetition: 1, intervalDays: 1, easeFactor: 250 }, "easy", reviewedAt);
+    expect(retry.dueAt.getTime() - reviewedAt.getTime()).toBe(10 * 60 * 1000);
+    expect(hard.intervalDays).toBe(1);
+    expect(easy.intervalDays).toBe(4);
+    expect(easy.dueAt.getTime()).toBeGreaterThan(hard.dueAt.getTime());
   });
 });

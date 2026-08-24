@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   listLLMModels: vi.fn(),
   getInfo: vi.fn(),
   getText: vi.fn(),
+  getScreenshot: vi.fn(),
   destroy: vi.fn(),
 }));
 
@@ -13,11 +14,12 @@ vi.mock("pdf-parse", () => ({
   PDFParse: class {
     getInfo = mocks.getInfo;
     getText = mocks.getText;
+    getScreenshot = mocks.getScreenshot;
     destroy = mocks.destroy;
   },
 }));
 
-import { answerGroundedly, extractPdf, makeFlashcards, makeQuiz, makeSummary, selectRepresentativeSources, type SourceChunk } from "./study";
+import { answerGroundedly, extractPdf, makeFlashcards, makeQuiz, makeSummary, ocrScannedPdfPages, selectRepresentativeSources, type SourceChunk } from "./study";
 
 const sources: SourceChunk[] = Array.from({ length: 16 }, (_, index) => ({
   id: index + 1,
@@ -34,9 +36,10 @@ function citationIds(value: { citations: Array<{ chunkId: number }> } | Array<{ 
 
 describe("grounded AI output boundaries", () => {
   beforeEach(() => {
-    mocks.invokeLLM.mockReset(); mocks.listLLMModels.mockReset(); mocks.getInfo.mockReset(); mocks.getText.mockReset(); mocks.destroy.mockReset();
+    mocks.invokeLLM.mockReset(); mocks.listLLMModels.mockReset(); mocks.getInfo.mockReset(); mocks.getText.mockReset(); mocks.getScreenshot.mockReset(); mocks.destroy.mockReset();
     mocks.listLLMModels.mockResolvedValue({ data: [{ id: "gpt-5-mini", object: "model", created: 0, owned_by: "openai" }] });
-    mocks.invokeLLM.mockImplementation(async (params: { response_format: { json_schema: { name: string } } }) => {
+    mocks.invokeLLM.mockImplementation(async (params: { response_format?: { json_schema: { name: string } } }) => {
+      if (!params.response_format) return { choices: [{ message: { content: "Scanned page transcription with a readable definition and supporting context." } }] };
       const name = params.response_format.json_schema.name;
       const response = name === "grounded_answer" ? { answer: "A grounded answer.", citationChunkIds: [1, 999] }
         : name === "study_summary" ? { summary: "A grounded summary.", citationChunkIds: [1, 16, 999] }
@@ -64,5 +67,13 @@ describe("grounded AI output boundaries", () => {
     expect(result.pages).toEqual([{ pageNumber: 1, text: "Page 1 text" }, { pageNumber: 2, text: "Page 2 text" }]);
     expect(mocks.getText).toHaveBeenCalledTimes(2);
     expect(mocks.destroy).toHaveBeenCalledOnce();
+  });
+
+  it("uses page images as a fallback when a scanned PDF needs OCR", async () => {
+    mocks.getScreenshot.mockResolvedValue({ pages: [{ dataUrl: "data:image/png;base64,scan" }] });
+    const result = await ocrScannedPdfPages(Buffer.from("pretend-pdf"), [1, 2]);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatchObject({ pageNumber: 1 });
+    expect(mocks.getScreenshot).toHaveBeenCalledTimes(2);
   });
 });

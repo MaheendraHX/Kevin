@@ -1,5 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import DashboardLayout from "@/components/DashboardLayout";
+import { WeeklyDigestPanel } from "@/components/WeeklyDigestPanel";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -48,6 +49,7 @@ export default function Dashboard() {
   const [, setLocation] = useLocation();
   const utils = trpc.useUtils();
   const dashboard = trpc.study.dashboard.useQuery(undefined, { enabled: isAuthenticated });
+  const weeklyDigest = trpc.study.weeklyDigest.useQuery(undefined, { enabled: isAuthenticated });
   const data = dashboard.data;
   const created = (id: number) => { utils.study.dashboard.invalidate(); setLocation(`/subject/${id}`); };
 
@@ -76,6 +78,7 @@ export default function Dashboard() {
           </div>
           <div className="rounded-[1.8rem] border border-white/80 bg-[linear-gradient(145deg,rgba(240,249,246,0.78),rgba(255,246,249,0.68))] p-6"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#65867e]">Study rhythm</p><h2 className="mt-1 font-serif text-2xl text-[#49485a]">Small steps add up.</h2><div className="mt-8 space-y-6"><div><div className="flex items-baseline justify-between"><span className="text-sm text-muted-foreground">Flashcard reflections</span><span className="font-serif text-2xl text-[#4f665f]">{data.reviewCount}</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/80"><div className="h-full rounded-full bg-[#89c8b7]" style={{ width: `${Math.min(100, data.reviewCount * 7)}%` }} /></div></div><p className="rounded-2xl bg-white/60 p-4 text-sm leading-6 text-[#636170]">Kevin keeps your generated study work within the subject where it belongs — ready when you are.</p></div></div>
         </section>
+        <WeeklyDigestPanel status={weeklyDigest.isLoading ? "loading" : weeklyDigest.isError ? "error" : "ready"} digest={weeklyDigest.data} onOpenSubject={id => setLocation(`/subject/${id}`)} onRetry={() => weeklyDigest.refetch()} />
       </> : null}
     </div>
   </DashboardLayout>;

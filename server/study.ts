@@ -19,6 +19,7 @@ export type Citation = {
 };
 
 const MAX_PDF_PAGES = 48;
+const MAX_OCR_PAGES = 12;
 let preferredModel: string | undefined;
 
 async function getPreferredStudyModel() {
@@ -61,6 +62,39 @@ export async function extractPdf(buffer: Buffer) {
       if (text) pages.push({ pageNumber, text });
     }
     return { totalPages, pages, truncated: totalPages > MAX_PDF_PAGES };
+  } finally {
+    await parser.destroy();
+  }
+}
+
+export async function ocrScannedPdfPages(buffer: Buffer, pageNumbers: number[]) {
+  const parser = new PDFParse({ data: buffer });
+  const pages: Array<{ pageNumber: number; text: string }> = [];
+  try {
+    const model = await getPreferredStudyModel();
+    for (const pageNumber of pageNumbers.slice(0, MAX_OCR_PAGES)) {
+      try {
+        const screenshot = await parser.getScreenshot({ partial: [pageNumber], imageDataUrl: true });
+        const page = screenshot.pages?.[0] as { dataUrl?: string } | undefined;
+        if (!page?.dataUrl) continue;
+        const response = await invokeLLM({
+          model,
+          max_tokens: 1800,
+          messages: [
+            { role: "system", content: "You are an exact OCR assistant. Transcribe the readable study text from this scanned PDF page. Preserve headings, bullets, formulas, and definitions. Return only the transcription. If no readable text is present, return an empty response." },
+            { role: "user", content: [{ type: "image_url", image_url: { url: page.dataUrl, detail: "high" } }] },
+          ],
+        });
+        const content = response.choices[0]?.message.content;
+        const text = typeof content === "string"
+          ? content.trim()
+          : (content || []).filter(item => item.type === "text").map(item => item.text).join("\n").trim();
+        if (text.length >= 40) pages.push({ pageNumber, text });
+      } catch {
+        // OCR is best-effort; extracted text from other pages remains usable.
+      }
+    }
+    return pages;
   } finally {
     await parser.destroy();
   }
@@ -291,4 +325,36 @@ export function gradeQuizAnswers(questions: GradableQuizQuestion[], answers: Rec
     return { questionId: question.id, correct, submitted, answer: question.answer, explanation: question.explanation, citations: question.citations };
   });
   return { score: feedback.filter(item => item.correct).length, feedback };
+}
+
+export type FlashcardScheduleState = {
+  repetition: number;
+  intervalDays: number;
+  easeFactor: number;
+};
+
+export function scheduleFlashcardReview(current: FlashcardScheduleState | undefined, rating: "easy" | "hard" | "review_again", reviewedAt = new Date()) {
+  const previous = current ?? { repetition: 0, intervalDays: 0, easeFactor: 250 };
+  let repetition = previous.repetition;
+  let intervalDays = previous.intervalDays;
+  let easeFactor = previous.easeFactor;
+  let dueAt: Date;
+
+  if (rating === "review_again") {
+    repetition = 0;
+    intervalDays = 0;
+    easeFactor = Math.max(130, easeFactor - 20);
+    dueAt = new Date(reviewedAt.getTime() + 10 * 60 * 1000);
+  } else if (rating === "hard") {
+    repetition += 1;
+    easeFactor = Math.max(130, easeFactor - 15);
+    intervalDays = Math.max(1, previous.intervalDays ? Math.round(previous.intervalDays * 1.2) : 1);
+    dueAt = new Date(reviewedAt.getTime() + intervalDays * 24 * 60 * 60 * 1000);
+  } else {
+    repetition += 1;
+    easeFactor = Math.min(300, easeFactor + 10);
+    intervalDays = previous.intervalDays === 0 ? 1 : previous.intervalDays === 1 ? 4 : Math.max(5, Math.round(previous.intervalDays * (easeFactor / 100)));
+    dueAt = new Date(reviewedAt.getTime() + intervalDays * 24 * 60 * 60 * 1000);
+  }
+  return { repetition, intervalDays, easeFactor, dueAt, lastReviewedAt: reviewedAt };
 }

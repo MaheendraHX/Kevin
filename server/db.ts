@@ -1,9 +1,10 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   chatMessages,
   conversations,
   flashcardReviews,
+  flashcardSchedules,
   InsertUser,
   materialChunks,
   materials,
@@ -203,6 +204,53 @@ export async function addFlashcardReview(ownerId: number, studySetId: number, ca
   await db.insert(flashcardReviews).values({ ownerId, studySetId, cardIndex, rating });
 }
 
+export async function getFlashcardSchedule(ownerId: number, studySetId: number, cardIndex: number) {
+  const db = await requireDb();
+  const rows = await db.select().from(flashcardSchedules).where(and(eq(flashcardSchedules.ownerId, ownerId), eq(flashcardSchedules.studySetId, studySetId), eq(flashcardSchedules.cardIndex, cardIndex))).limit(1);
+  return rows[0];
+}
+
+export async function saveFlashcardSchedule(ownerId: number, studySetId: number, cardIndex: number, schedule: { repetition: number; intervalDays: number; easeFactor: number; dueAt: Date; lastReviewedAt: Date }) {
+  const db = await requireDb();
+  const existing = await getFlashcardSchedule(ownerId, studySetId, cardIndex);
+  if (existing) {
+    await db.update(flashcardSchedules).set(schedule).where(and(eq(flashcardSchedules.id, existing.id), eq(flashcardSchedules.ownerId, ownerId)));
+    return { ...existing, ...schedule };
+  }
+  const result = await db.insert(flashcardSchedules).values({ ownerId, studySetId, cardIndex, ...schedule });
+  const rows = await db.select().from(flashcardSchedules).where(eq(flashcardSchedules.id, Number(result[0].insertId))).limit(1);
+  return rows[0]!;
+}
+
+export async function seedFlashcardSchedules(ownerId: number, studySetId: number, cardCount: number) {
+  const db = await requireDb();
+  if (cardCount < 1) return;
+  const existing = await db.select({ cardIndex: flashcardSchedules.cardIndex }).from(flashcardSchedules).where(and(eq(flashcardSchedules.ownerId, ownerId), eq(flashcardSchedules.studySetId, studySetId)));
+  const existingIndexes = new Set(existing.map(row => row.cardIndex));
+  const missing = Array.from({ length: cardCount }, (_, cardIndex) => cardIndex).filter(cardIndex => !existingIndexes.has(cardIndex));
+  if (missing.length) await db.insert(flashcardSchedules).values(missing.map(cardIndex => ({ ownerId, studySetId, cardIndex, dueAt: new Date() })));
+}
+
+export async function seedExistingFlashcardSchedules(ownerId: number, subjectId?: number) {
+  const db = await requireDb();
+  const scope = subjectId
+    ? and(eq(studySets.ownerId, ownerId), eq(studySets.kind, "flashcards"), eq(studySets.subjectId, subjectId))
+    : and(eq(studySets.ownerId, ownerId), eq(studySets.kind, "flashcards"));
+  const sets = await db.select({ id: studySets.id, payload: studySets.payload }).from(studySets).where(scope);
+  for (const set of sets) {
+    const payload = set.payload as { cards?: unknown[] };
+    if (Array.isArray(payload.cards)) await seedFlashcardSchedules(ownerId, set.id, payload.cards.length);
+  }
+}
+
+export async function getDueFlashcards(ownerId: number, subjectId?: number) {
+  const db = await requireDb();
+  const scope = subjectId
+    ? and(eq(flashcardSchedules.ownerId, ownerId), eq(studySets.subjectId, subjectId), lte(flashcardSchedules.dueAt, new Date()))
+    : and(eq(flashcardSchedules.ownerId, ownerId), lte(flashcardSchedules.dueAt, new Date()));
+  return db.select({ schedule: flashcardSchedules, studySet: studySets, subject: subjects }).from(flashcardSchedules).innerJoin(studySets, eq(flashcardSchedules.studySetId, studySets.id)).innerJoin(subjects, eq(studySets.subjectId, subjects.id)).where(scope).orderBy(flashcardSchedules.dueAt).limit(48);
+}
+
 export async function saveQuizAttempt(ownerId: number, input: { studySetId: number; subjectId: number; score: number; totalQuestions: number; answers: unknown; feedback: unknown }) {
   const db = await requireDb();
   const result = await db.insert(quizAttempts).values({ ...input, ownerId });
@@ -227,4 +275,35 @@ export async function getDashboard(ownerId: number) {
   const averageQuizScore = attemptRows.length ? Math.round(attemptRows.reduce((sum, attempt) => sum + (attempt.score / Math.max(attempt.totalQuestions, 1)) * 100, 0) / attemptRows.length) : 0;
   const studyMinutes = sessionRows.reduce((sum, session) => sum + session.minutes, 0);
   return { subjects: subjectRows, recentMaterials: materialRows, attempts: attemptRows, studyMinutes, averageQuizScore, reviewCount: reviewRows.length };
+}
+
+export function calculateWeeklyDigest(input: {
+  subjects: Array<{ id: number; name: string }>;
+  sessions: Array<{ subjectId: number; minutes: number }>;
+  attempts: Array<{ subjectId: number; score: number; totalQuestions: number }>;
+  reviews: Array<{ subjectId: number }>;
+  dueCards: Array<{ studySet: { subjectId: number } }>;
+}) {
+  const subjects = input.subjects.map(subject => {
+    const subjectSessions = input.sessions.filter(session => session.subjectId === subject.id);
+    const subjectAttempts = input.attempts.filter(attempt => attempt.subjectId === subject.id);
+    const minutes = subjectSessions.reduce((sum, session) => sum + session.minutes, 0);
+    const quizAverage = subjectAttempts.length ? Math.round(subjectAttempts.reduce((sum, attempt) => sum + (attempt.score / Math.max(1, attempt.totalQuestions)) * 100, 0) / subjectAttempts.length) : null;
+    return { subjectId: subject.id, subjectName: subject.name, minutes, quizzesTaken: subjectAttempts.length, quizAverage, cardsReviewed: input.reviews.filter(review => review.subjectId === subject.id).length, dueCards: input.dueCards.filter(card => card.studySet.subjectId === subject.id).length };
+  });
+  return { totalMinutes: input.sessions.reduce((sum, session) => sum + session.minutes, 0), quizzesTaken: input.attempts.length, cardsReviewed: input.reviews.length, dueCards: input.dueCards.length, subjects };
+}
+
+export async function getWeeklyDigest(ownerId: number) {
+  const db = await requireDb();
+  const weekStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  await seedExistingFlashcardSchedules(ownerId);
+  const [subjectRows, sessions, attempts, reviews, dueCards] = await Promise.all([
+    listSubjects(ownerId),
+    db.select().from(studySessions).where(and(eq(studySessions.ownerId, ownerId), gte(studySessions.createdAt, weekStart))),
+    db.select().from(quizAttempts).where(and(eq(quizAttempts.ownerId, ownerId), gte(quizAttempts.createdAt, weekStart))),
+    db.select({ review: flashcardReviews, subjectId: studySets.subjectId }).from(flashcardReviews).innerJoin(studySets, eq(flashcardReviews.studySetId, studySets.id)).where(and(eq(flashcardReviews.ownerId, ownerId), gte(flashcardReviews.createdAt, weekStart))),
+    getDueFlashcards(ownerId),
+  ]);
+  return { weekStart, ...calculateWeeklyDigest({ subjects: subjectRows, sessions, attempts, reviews, dueCards }) };
 }

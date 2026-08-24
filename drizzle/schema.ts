@@ -96,6 +96,23 @@ export const flashcardReviews = mysqlTable("flashcardReviews", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, table => [index("flashcard_reviews_owner_created_idx").on(table.ownerId, table.createdAt)]);
 
+export const flashcardSchedules = mysqlTable("flashcardSchedules", {
+  id: int("id").autoincrement().primaryKey(),
+  studySetId: int("studySetId").notNull().references(() => studySets.id, { onDelete: "cascade" }),
+  ownerId: int("ownerId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  cardIndex: int("cardIndex").notNull(),
+  repetition: int("repetition").default(0).notNull(),
+  intervalDays: int("intervalDays").default(0).notNull(),
+  easeFactor: int("easeFactor").default(250).notNull(),
+  dueAt: timestamp("dueAt").defaultNow().notNull(),
+  lastReviewedAt: timestamp("lastReviewedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  index("flashcard_schedules_owner_due_idx").on(table.ownerId, table.dueAt),
+  index("flashcard_schedules_set_card_idx").on(table.studySetId, table.cardIndex),
+]);
+
 export const quizAttempts = mysqlTable("quizAttempts", {
   id: int("id").autoincrement().primaryKey(),
   studySetId: int("studySetId").notNull().references(() => studySets.id, { onDelete: "cascade" }),

@@ -28,3 +28,13 @@
 - [x] Record desktop and mobile visual validation for both light and dark themes.
 - [x] Review the authenticated dashboard and subject workspace at desktop and mobile sizes in both light and dark themes.
 - [x] Create an enhanced project checkpoint for Kevin.
+- [x] Add an OCR fallback for scanned PDFs that preserves material and page-source metadata.
+- [x] Extend flashcard review persistence with due dates, intervals, and spaced-repetition scheduling.
+- [x] Build a due-review experience that prioritizes cards ready for recall practice.
+- [x] Create weekly subject progress digests from actual sessions, quiz attempts, and flashcard reviews.
+- [x] Add server and UI tests for OCR fallback, scheduling, and digest calculations.
+- [x] Validate the new flows at desktop and mobile sizes with type, test, and accessibility checks.
+- [x] Add deterministic weekly digest calculation tests for sessions, quizzes, reviews, and due cards.
+- [x] Add UI tests for weekly digest and due-review states, including empty and error recovery behavior.
+- [x] Add UI coverage for the due-review banner, entry action, and empty recovery state.
+- [x] Create a final enhancement checkpoint for Kevin.
