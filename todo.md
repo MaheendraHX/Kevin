@@ -17,3 +17,14 @@
 - [x] Add protected-router, document processing, and full quiz scoring tests for the primary study flow.
 - [x] Perform and document a contrast and keyboard-focus audit for custom interactive elements and pastel surfaces.
 - [x] Create a final project checkpoint with the completed workspace.
+- [x] Remove the client-side PDF file-size restriction while preserving safe server-side parsing and storage behavior.
+- [x] Improve material upload guidance and error recovery for larger study documents.
+- [x] Add a user-controlled dark mode with a polished calming visual palette.
+- [x] Refine dashboard and workspace interactions to make the study flow more cohesive.
+- [x] Verify and document the server-side LLM model selection behavior.
+- [x] Validate the enhanced experience across themes, breakpoints, type checks, and tests.
+- [x] Add explicit large-PDF upload recovery with actionable request-size and parsing error guidance.
+- [x] Implement and document dedicated dashboard and workspace interaction refinements.
+- [x] Record desktop and mobile visual validation for both light and dark themes.
+- [x] Review the authenticated dashboard and subject workspace at desktop and mobile sizes in both light and dark themes.
+- [x] Create an enhanced project checkpoint for Kevin.

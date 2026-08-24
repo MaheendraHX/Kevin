@@ -1,7 +1,8 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import { startLogin } from "@/const";
-import { ArrowRight, BookOpenCheck, BrainCircuit, FileText, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, BookOpenCheck, BrainCircuit, FileText, Moon, ShieldCheck, Sparkles, Sun } from "lucide-react";
 import { useLocation } from "wouter";
 
 const benefits = [
@@ -12,6 +13,7 @@ const benefits = [
 
 export default function Home() {
   const { isAuthenticated } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [, setLocation] = useLocation();
   const enterWorkspace = () => isAuthenticated ? setLocation("/workspace") : startLogin();
 
@@ -27,9 +29,14 @@ export default function Home() {
           <span className="grid size-10 place-items-center rounded-2xl border border-white/60 bg-white/45 font-serif text-xl italic text-primary shadow-sm backdrop-blur">K</span>
           <span className="font-serif text-2xl tracking-tight text-[#47415c]">Kevin</span>
         </button>
-        <Button variant="ghost" onClick={enterWorkspace} className="text-xs font-semibold uppercase tracking-[0.18em] text-[#514b65] hover:bg-white/45 hover:text-primary">
-          {isAuthenticated ? "Open workspace" : "Sign in"}
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <button onClick={toggleTheme} className="grid size-9 place-items-center rounded-full border border-white/60 bg-white/35 text-primary hover:bg-white/70" aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`} title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}>
+            {theme === "light" ? <Moon className="size-4" /> : <Sun className="size-4" />}
+          </button>
+          <Button variant="ghost" onClick={enterWorkspace} className="text-xs font-semibold uppercase tracking-[0.18em] text-[#514b65] hover:bg-white/45 hover:text-primary">
+            {isAuthenticated ? "Open workspace" : "Sign in"}
+          </Button>
+        </div>
       </header>
 
       <main className="relative z-10 mx-auto max-w-7xl px-5 pb-20 sm:px-8 lg:px-12">

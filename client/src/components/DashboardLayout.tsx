@@ -20,8 +20,9 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { startLogin } from "@/const";
+import { useTheme } from "@/contexts/ThemeContext";
 import { useIsMobile } from "@/hooks/useMobile";
-import { BookOpenCheck, LayoutDashboard, LogOut, PanelLeft } from "lucide-react";
+import { BookOpenCheck, LayoutDashboard, LogOut, Moon, PanelLeft, Sun } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -104,6 +105,7 @@ function DashboardLayoutContent({
   setSidebarWidth,
 }: DashboardLayoutContentProps) {
   const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [location, setLocation] = useLocation();
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
@@ -164,6 +166,14 @@ function DashboardLayoutContent({
                 aria-label="Toggle navigation"
               >
                 <PanelLeft className="h-4 w-4 text-muted-foreground" />
+              </button>
+              <button
+                onClick={toggleTheme}
+                className="h-8 w-8 flex items-center justify-center hover:bg-accent rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
+                aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+                title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+              >
+                {theme === "light" ? <Moon className="h-4 w-4 text-muted-foreground" /> : <Sun className="h-4 w-4 text-muted-foreground" />}
               </button>
               {!isCollapsed ? (
                 <div className="flex items-center gap-2 min-w-0">
@@ -262,6 +272,9 @@ function DashboardLayoutContent({
                 </div>
               </div>
             </div>
+            <button onClick={toggleTheme} className="grid size-9 place-items-center rounded-lg bg-background text-primary" aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}>
+              {theme === "light" ? <Moon className="size-4" /> : <Sun className="size-4" />}
+            </button>
           </div>
         )}
         <main className="flex-1 p-4">{children}</main>

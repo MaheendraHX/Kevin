@@ -1,5 +1,5 @@
 import { PDFParse } from "pdf-parse";
-import { invokeLLM } from "./_core/llm";
+import { invokeLLM, listLLMModels } from "./_core/llm";
 
 export type SourceChunk = {
   id: number;
@@ -19,6 +19,22 @@ export type Citation = {
 };
 
 const MAX_PDF_PAGES = 48;
+let preferredModel: string | undefined;
+
+async function getPreferredStudyModel() {
+  if (preferredModel) return preferredModel;
+  try {
+    const catalog = await listLLMModels();
+    preferredModel = catalog.data.find(model => model.id === "gpt-5-mini")?.id
+      ?? catalog.data.find(model => model.id.startsWith("gpt-5-mini"))?.id
+      ?? catalog.data.find(model => model.id.startsWith("gpt-5"))?.id;
+  } catch {
+    // The platform's configured default remains a safe fallback if its model
+    // catalog is temporarily unavailable.
+    preferredModel = undefined;
+  }
+  return preferredModel;
+}
 
 export function makeChunks(text: string, pageNumber: number | null, startIndex: number) {
   const cleaned = text.replace(/\s+/g, " ").trim();
@@ -121,7 +137,9 @@ export function resolveCitations(ids: unknown, allowedSources: SourceChunk[]) {
 }
 
 async function requestStructured(system: string, prompt: string, name: string, schema: Record<string, unknown>) {
+  const model = await getPreferredStudyModel();
   const response = await invokeLLM({
+    model,
     messages: [{ role: "system", content: system }, { role: "user", content: prompt }],
     response_format: { type: "json_schema", json_schema: { name, strict: true, schema } },
   });

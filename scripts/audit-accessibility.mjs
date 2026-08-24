@@ -5,6 +5,10 @@ const pairs = [
   ["white on primary", "#ffffff", "#7560aa"],
   ["mint panel text", "#45675e", "#edf9f4"],
   ["blush panel text", "#80515d", "#fff0f3"],
+  ["dark body text", "#eee9f6", "#1b1824"],
+  ["dark muted text", "#c0b8ca", "#1b1824"],
+  ["dark primary on canvas", "#b6a2e8", "#1b1824"],
+  ["dark primary foreground", "#211a30", "#b6a2e8"],
 ];
 
 function channel(value) {

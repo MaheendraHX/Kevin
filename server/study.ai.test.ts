@@ -2,12 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   invokeLLM: vi.fn(),
+  listLLMModels: vi.fn(),
   getInfo: vi.fn(),
   getText: vi.fn(),
   destroy: vi.fn(),
 }));
 
-vi.mock("./_core/llm", () => ({ invokeLLM: mocks.invokeLLM }));
+vi.mock("./_core/llm", () => ({ invokeLLM: mocks.invokeLLM, listLLMModels: mocks.listLLMModels }));
 vi.mock("pdf-parse", () => ({
   PDFParse: class {
     getInfo = mocks.getInfo;
@@ -33,7 +34,8 @@ function citationIds(value: { citations: Array<{ chunkId: number }> } | Array<{ 
 
 describe("grounded AI output boundaries", () => {
   beforeEach(() => {
-    mocks.invokeLLM.mockReset(); mocks.getInfo.mockReset(); mocks.getText.mockReset(); mocks.destroy.mockReset();
+    mocks.invokeLLM.mockReset(); mocks.listLLMModels.mockReset(); mocks.getInfo.mockReset(); mocks.getText.mockReset(); mocks.destroy.mockReset();
+    mocks.listLLMModels.mockResolvedValue({ data: [{ id: "gpt-5-mini", object: "model", created: 0, owned_by: "openai" }] });
     mocks.invokeLLM.mockImplementation(async (params: { response_format: { json_schema: { name: string } } }) => {
       const name = params.response_format.json_schema.name;
       const response = name === "grounded_answer" ? { answer: "A grounded answer.", citationChunkIds: [1, 999] }

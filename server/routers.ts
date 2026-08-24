@@ -10,7 +10,6 @@ import { answerGroundedly, extractPdf, gradeQuizAnswers, makeChunks, makeFlashca
 import { COOKIE_NAME } from "../shared/const";
 
 const aiUsage = new Map<number, { startedAt: number; count: number }>();
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 function requireOwned<T>(value: T | undefined, message = "This resource is unavailable.") {
   if (!value) throw new TRPCError({ code: "NOT_FOUND", message });
@@ -32,8 +31,8 @@ function decodePdfDataUrl(dataUrl: string) {
   const match = /^data:application\/pdf;base64,([a-zA-Z0-9+/=\s]+)$/.exec(dataUrl);
   if (!match) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose a valid PDF file." });
   const file = Buffer.from(match[1].replace(/\s/g, ""), "base64");
-  if (!file.length || file.length > MAX_UPLOAD_BYTES || !file.subarray(0, 4).toString().startsWith("%PDF")) {
-    throw new TRPCError({ code: "BAD_REQUEST", message: "PDFs must be valid and no larger than 10 MB." });
+  if (!file.length || !file.subarray(0, 4).toString().startsWith("%PDF")) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Choose a valid PDF file." });
   }
   return file;
 }
@@ -69,7 +68,7 @@ export const appRouter = router({
       const material = await db.createMaterialWithChunks(ctx.user.id, { subjectId: input.subjectId, title: input.title, sourceType: "text", extractedText: input.content, processingStatus: chunks.length ? "ready" : "needs_attention", chunks });
       return requireOwned(material, "Your material could not be saved.");
     }),
-    uploadPdf: protectedProcedure.input(z.object({ subjectId: z.number().int().positive(), fileName: z.string().min(1).max(255), dataUrl: z.string().min(40).max(14_000_000) })).mutation(async ({ ctx, input }) => {
+    uploadPdf: protectedProcedure.input(z.object({ subjectId: z.number().int().positive(), fileName: z.string().min(1).max(255), dataUrl: z.string().min(40) })).mutation(async ({ ctx, input }) => {
       requireOwned(await db.getSubjectForOwner(ctx.user.id, input.subjectId), "This subject is unavailable.");
       const file = decodePdfDataUrl(input.dataUrl);
       let parsed;
