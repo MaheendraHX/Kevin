@@ -36,11 +36,17 @@ export const materials = mysqlTable("materials", {
   pageCount: int("pageCount"),
   extractedText: mediumtext("extractedText"),
   processingStatus: mysqlEnum("processingStatus", ["ready", "needs_attention"]).default("ready").notNull(),
+  folder: varchar("folder", { length: 120 }),
+  tags: json("tags"),
+  version: int("version").default(1).notNull(),
+  supersedesMaterialId: int("supersedesMaterialId"),
+  archivedAt: timestamp("archivedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, table => [
   index("materials_owner_created_idx").on(table.ownerId, table.createdAt),
   index("materials_subject_created_idx").on(table.subjectId, table.createdAt),
+  index("materials_subject_archived_idx").on(table.subjectId, table.archivedAt),
 ]);
 
 export const materialChunks = mysqlTable("materialChunks", {
@@ -93,6 +99,7 @@ export const flashcardReviews = mysqlTable("flashcardReviews", {
   ownerId: int("ownerId").notNull().references(() => users.id, { onDelete: "cascade" }),
   cardIndex: int("cardIndex").notNull(),
   rating: mysqlEnum("rating", ["easy", "hard", "review_again"]).notNull(),
+  confidence: mysqlEnum("confidence", ["low", "steady", "high"]).default("steady").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, table => [index("flashcard_reviews_owner_created_idx").on(table.ownerId, table.createdAt)]);
 
@@ -133,6 +140,39 @@ export const studySessions = mysqlTable("studySessions", {
   activityType: mysqlEnum("activityType", ["reading", "chat", "flashcards", "quiz"]).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, table => [index("study_sessions_owner_created_idx").on(table.ownerId, table.createdAt)]);
+
+export const flashcardEdits = mysqlTable("flashcardEdits", {
+  id: int("id").autoincrement().primaryKey(),
+  studySetId: int("studySetId").notNull().references(() => studySets.id, { onDelete: "cascade" }),
+  ownerId: int("ownerId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  cardIndex: int("cardIndex").notNull(),
+  front: text("front").notNull(),
+  back: text("back").notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [index("flashcard_edits_set_card_idx").on(table.studySetId, table.cardIndex)]);
+
+export const examDates = mysqlTable("examDates", {
+  id: int("id").autoincrement().primaryKey(),
+  subjectId: int("subjectId").notNull().references(() => subjects.id, { onDelete: "cascade" }),
+  ownerId: int("ownerId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 160 }).notNull(),
+  occursAt: timestamp("occursAt").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("exam_dates_owner_occurs_idx").on(table.ownerId, table.occursAt)]);
+
+export const mistakeNotes = mysqlTable("mistakeNotes", {
+  id: int("id").autoincrement().primaryKey(),
+  subjectId: int("subjectId").notNull().references(() => subjects.id, { onDelete: "cascade" }),
+  quizAttemptId: int("quizAttemptId").references(() => quizAttempts.id, { onDelete: "set null" }),
+  ownerId: int("ownerId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  prompt: text("prompt").notNull(),
+  answer: text("answer").notNull(),
+  note: text("note"),
+  citations: json("citations"),
+  resolvedAt: timestamp("resolvedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [index("mistake_notes_subject_owner_idx").on(table.subjectId, table.ownerId, table.createdAt)]);
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;

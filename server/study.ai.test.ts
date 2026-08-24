@@ -60,6 +60,13 @@ describe("grounded AI output boundaries", () => {
     [...citationIds(summary), ...citationIds(cards), ...citationIds(questions)].forEach(id => expect(selectedIds.has(id)).toBe(true));
   });
 
+  it("honors the requested quiz difficulty without expanding beyond the selected sources", async () => {
+    const selectedIds = new Set(selectRepresentativeSources(sources, 14).map(source => source.id));
+    const questions = await makeQuiz(sources, 3, "challenging");
+    expect(JSON.stringify(mocks.invokeLLM.mock.calls.at(-1)?.[0])).toContain("challenging");
+    citationIds(questions).forEach(id => expect(selectedIds.has(id)).toBe(true));
+  });
+
   it("extracts each available PDF page and cleans up the parser", async () => {
     mocks.getInfo.mockResolvedValue({ total: 2 });
     mocks.getText.mockImplementation(async ({ partial }: { partial: number[] }) => ({ text: `Page ${partial[0]} text` }));

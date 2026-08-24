@@ -253,12 +253,12 @@ export async function makeFlashcards(sources: SourceChunk[], count: number) {
   });
 }
 
-export async function makeQuiz(sources: SourceChunk[], count: number) {
+export async function makeQuiz(sources: SourceChunk[], count: number, difficulty: "gentle" | "standard" | "challenging" = "standard") {
   const selected = selectRepresentativeSources(sources, 14);
   if (!selected.length) throw new Error("Add material with readable text before generating a quiz.");
   const output = await requestStructured(
     "You are Kevin, a careful study assistant. Write a fair quiz using only the supplied source excerpts. Mix multiple-choice and short-answer questions. Every question must be answerable from the excerpts and have a compact explanation.",
-    `Create ${count} questions from these excerpts:\n${formatContext(selected)}`,
+    `Create ${count} ${difficulty} difficulty questions from these excerpts. ${difficulty === "gentle" ? "Favor direct recall and clear definitions." : difficulty === "challenging" ? "Favor careful comparison, application, and distinctions stated in the excerpts." : "Balance recall with simple application."}\n${formatContext(selected)}`,
     "grounded_quiz",
     {
       type: "object",

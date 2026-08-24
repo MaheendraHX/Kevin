@@ -61,6 +61,20 @@
 - [x] Place concise print instructions immediately beside the Summary and Quiz Print PDF controls.
 - [x] Add per-format export success and error validation for Markdown, PDF, and Anki paths.
 - [x] Create a final PDF and Anki export checkpoint for Kevin.
-- [ ] Create a public GitHub repository for Kevin.
-- [ ] Commit and push the current validated Kevin source code.
-- [ ] Verify the public repository contents and share its URL.
+- [x] Create a public GitHub repository for Kevin.
+- [x] Commit and push the current validated Kevin source code.
+- [x] Verify the public repository contents and share its URL.
+- [x] Add material folders, tags, search, archive/delete controls, and source-version history.
+- [x] Add quiz difficulty selection, confidence ratings, editable flashcards, and source-grounded answer explanations.
+- [x] Add exam dates and materials-only study planning per subject.
+- [x] Add a mistake notebook with links back to missed quiz concepts and their original source materials.
+- [x] Add a source-coverage view for summaries, flashcards, quizzes, and material review state.
+- [x] Add final empty, loading, error, accessibility, and responsive polish across all new study flows.
+- [x] Add comprehensive server and interface tests for the final product workflows.
+- [x] Add a visible source-version timeline and revision relationships for each material.
+- [x] Add mistake-notebook actions that navigate directly to the cited material or source page.
+- [x] Add an explicit per-material review state to source coverage.
+- [x] Validate empty, loading, error, and responsive states for all new material, planning, mistake, coverage, and practice flows.
+- [x] Add targeted server and interface tests for the final product management and learning workflows.
+- [ ] Create the final Kevin product checkpoint.
+- [ ] Commit and push the final Kevin product to the public GitHub repository.

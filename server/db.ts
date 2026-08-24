@@ -1,13 +1,16 @@
-import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   chatMessages,
   conversations,
+  examDates,
+  flashcardEdits,
   flashcardReviews,
   flashcardSchedules,
   InsertUser,
   materialChunks,
   materials,
+  mistakeNotes,
   quizAttempts,
   studySessions,
   studySets,
@@ -94,6 +97,31 @@ export async function getMaterialForOwner(ownerId: number, materialId: number) {
   return rows[0];
 }
 
+export async function updateMaterialMetadata(ownerId: number, materialId: number, input: { title?: string; folder?: string | null; tags?: string[] }) {
+  const db = await requireDb();
+  const set: Record<string, unknown> = {};
+  if (input.title !== undefined) set.title = input.title;
+  if (input.folder !== undefined) set.folder = input.folder?.trim() || null;
+  if (input.tags !== undefined) set.tags = input.tags.filter(Boolean).slice(0, 12);
+  if (!Object.keys(set).length) return getMaterialForOwner(ownerId, materialId);
+  await db.update(materials).set(set).where(and(eq(materials.id, materialId), eq(materials.ownerId, ownerId)));
+  return getMaterialForOwner(ownerId, materialId);
+}
+
+export async function archiveMaterial(ownerId: number, materialId: number, archived: boolean) {
+  const db = await requireDb();
+  await db.update(materials).set({ archivedAt: archived ? new Date() : null }).where(and(eq(materials.id, materialId), eq(materials.ownerId, ownerId)));
+  return getMaterialForOwner(ownerId, materialId);
+}
+
+export async function deleteMaterial(ownerId: number, materialId: number) {
+  const db = await requireDb();
+  const existing = await getMaterialForOwner(ownerId, materialId);
+  if (!existing) return false;
+  await db.delete(materials).where(and(eq(materials.id, materialId), eq(materials.ownerId, ownerId)));
+  return true;
+}
+
 export async function createMaterialWithChunks(ownerId: number, input: {
   subjectId: number;
   title: string;
@@ -105,6 +133,10 @@ export async function createMaterialWithChunks(ownerId: number, input: {
   pageCount?: number | null;
   extractedText: string;
   processingStatus: "ready" | "needs_attention";
+  folder?: string | null;
+  tags?: string[];
+  supersedesMaterialId?: number | null;
+  version?: number;
   chunks: Array<{ pageNumber: number | null; chunkIndex: number; content: string }>;
 }) {
   const db = await requireDb();
@@ -122,6 +154,10 @@ export async function createMaterialWithChunks(ownerId: number, input: {
     pageCount: input.pageCount ?? null,
     extractedText: input.extractedText,
     processingStatus: input.processingStatus,
+    folder: input.folder?.trim() || null,
+    tags: input.tags?.filter(Boolean).slice(0, 12) || null,
+    supersedesMaterialId: input.supersedesMaterialId ?? null,
+    version: input.version ?? 1,
   });
   const materialId = Number(result[0].insertId);
   if (input.chunks.length) {
@@ -156,17 +192,21 @@ export async function getWorkspace(ownerId: number, subjectId: number) {
   const db = await requireDb();
   const subject = await getSubjectForOwner(ownerId, subjectId);
   if (!subject) return null;
-  const [materialRows, setRows, conversationRows, reviewRows] = await Promise.all([
+  const [materialRows, archivedMaterialRows, setRows, conversationRows, reviewRows, editRows, examRows, mistakeRows] = await Promise.all([
+    db.select().from(materials).where(and(eq(materials.ownerId, ownerId), eq(materials.subjectId, subjectId), isNull(materials.archivedAt))).orderBy(desc(materials.createdAt)),
     db.select().from(materials).where(and(eq(materials.ownerId, ownerId), eq(materials.subjectId, subjectId))).orderBy(desc(materials.createdAt)),
     db.select().from(studySets).where(and(eq(studySets.ownerId, ownerId), eq(studySets.subjectId, subjectId))).orderBy(desc(studySets.createdAt)).limit(16),
     db.select().from(conversations).where(and(eq(conversations.ownerId, ownerId), eq(conversations.subjectId, subjectId))).orderBy(desc(conversations.updatedAt)).limit(8),
     db.select().from(flashcardReviews).where(eq(flashcardReviews.ownerId, ownerId)).orderBy(desc(flashcardReviews.createdAt)).limit(80),
+    db.select().from(flashcardEdits).where(eq(flashcardEdits.ownerId, ownerId)).orderBy(desc(flashcardEdits.updatedAt)).limit(160),
+    db.select().from(examDates).where(and(eq(examDates.ownerId, ownerId), eq(examDates.subjectId, subjectId))).orderBy(examDates.occursAt).limit(12),
+    db.select().from(mistakeNotes).where(and(eq(mistakeNotes.ownerId, ownerId), eq(mistakeNotes.subjectId, subjectId))).orderBy(desc(mistakeNotes.createdAt)).limit(48),
   ]);
   const latestConversation = conversationRows[0];
   const messageRows = latestConversation
     ? await db.select().from(chatMessages).where(and(eq(chatMessages.ownerId, ownerId), eq(chatMessages.conversationId, latestConversation.id))).orderBy(chatMessages.createdAt).limit(50)
     : [];
-  return { subject, materials: materialRows, studySets: setRows, conversations: conversationRows, messages: messageRows, reviews: reviewRows };
+  return { subject, materials: materialRows, archivedMaterials: archivedMaterialRows.filter(material => material.archivedAt), studySets: setRows, conversations: conversationRows, messages: messageRows, reviews: reviewRows, cardEdits: editRows, exams: examRows, mistakes: mistakeRows };
 }
 
 export async function getOrCreateConversation(ownerId: number, subjectId: number, conversationId: number | undefined, question: string) {
@@ -199,9 +239,21 @@ export async function getStudySetForOwner(ownerId: number, studySetId: number) {
   return rows[0];
 }
 
-export async function addFlashcardReview(ownerId: number, studySetId: number, cardIndex: number, rating: "easy" | "hard" | "review_again") {
+export async function addFlashcardReview(ownerId: number, studySetId: number, cardIndex: number, rating: "easy" | "hard" | "review_again", confidence: "low" | "steady" | "high" = "steady") {
   const db = await requireDb();
-  await db.insert(flashcardReviews).values({ ownerId, studySetId, cardIndex, rating });
+  await db.insert(flashcardReviews).values({ ownerId, studySetId, cardIndex, rating, confidence });
+}
+
+export async function saveFlashcardEdit(ownerId: number, studySetId: number, cardIndex: number, front: string, back: string) {
+  const db = await requireDb();
+  const existing = await db.select().from(flashcardEdits).where(and(eq(flashcardEdits.ownerId, ownerId), eq(flashcardEdits.studySetId, studySetId), eq(flashcardEdits.cardIndex, cardIndex))).limit(1);
+  if (existing[0]) {
+    await db.update(flashcardEdits).set({ front, back }).where(eq(flashcardEdits.id, existing[0].id));
+    return { ...existing[0], front, back };
+  }
+  const result = await db.insert(flashcardEdits).values({ ownerId, studySetId, cardIndex, front, back });
+  const rows = await db.select().from(flashcardEdits).where(eq(flashcardEdits.id, Number(result[0].insertId))).limit(1);
+  return rows[0]!;
 }
 
 export async function getFlashcardSchedule(ownerId: number, studySetId: number, cardIndex: number) {
@@ -258,6 +310,33 @@ export async function saveQuizAttempt(ownerId: number, input: { studySetId: numb
   return rows[0]!;
 }
 
+export async function saveMistakes(ownerId: number, input: { subjectId: number; quizAttemptId: number; items: Array<{ prompt: string; answer: string; citations: unknown }> }) {
+  const db = await requireDb();
+  if (!input.items.length) return [];
+  await db.insert(mistakeNotes).values(input.items.map(item => ({ ownerId, subjectId: input.subjectId, quizAttemptId: input.quizAttemptId, prompt: item.prompt, answer: item.answer, citations: item.citations })));
+  return db.select().from(mistakeNotes).where(and(eq(mistakeNotes.ownerId, ownerId), eq(mistakeNotes.quizAttemptId, input.quizAttemptId))).orderBy(desc(mistakeNotes.createdAt));
+}
+
+export async function resolveMistake(ownerId: number, mistakeId: number, resolved: boolean) {
+  const db = await requireDb();
+  await db.update(mistakeNotes).set({ resolvedAt: resolved ? new Date() : null }).where(and(eq(mistakeNotes.id, mistakeId), eq(mistakeNotes.ownerId, ownerId)));
+  const rows = await db.select().from(mistakeNotes).where(and(eq(mistakeNotes.id, mistakeId), eq(mistakeNotes.ownerId, ownerId))).limit(1);
+  return rows[0];
+}
+
+export async function createExamDate(ownerId: number, input: { subjectId: number; title: string; occursAt: Date; notes?: string }) {
+  const db = await requireDb();
+  const result = await db.insert(examDates).values({ ownerId, subjectId: input.subjectId, title: input.title, occursAt: input.occursAt, notes: input.notes || null });
+  const rows = await db.select().from(examDates).where(and(eq(examDates.id, Number(result[0].insertId)), eq(examDates.ownerId, ownerId))).limit(1);
+  return rows[0]!;
+}
+
+export async function deleteExamDate(ownerId: number, examId: number) {
+  const db = await requireDb();
+  const result = await db.delete(examDates).where(and(eq(examDates.id, examId), eq(examDates.ownerId, ownerId)));
+  return Number(result[0].affectedRows || 0) > 0;
+}
+
 export async function recordStudySession(ownerId: number, subjectId: number, minutes: number, activityType: "reading" | "chat" | "flashcards" | "quiz") {
   const db = await requireDb();
   await db.insert(studySessions).values({ ownerId, subjectId, minutes, activityType });
@@ -306,4 +385,57 @@ export async function getWeeklyDigest(ownerId: number) {
     getDueFlashcards(ownerId),
   ]);
   return { weekStart, ...calculateWeeklyDigest({ subjects: subjectRows, sessions, attempts, reviews, dueCards }) };
+}
+
+function collectCitationMaterialIds(value: unknown, result = new Set<number>()): Set<number> {
+  if (Array.isArray(value)) value.forEach(item => collectCitationMaterialIds(item, result));
+  else if (value && typeof value === "object") {
+    const item = value as Record<string, unknown>;
+    if (typeof item.materialId === "number") result.add(item.materialId);
+    Object.values(item).forEach(child => collectCitationMaterialIds(child, result));
+  }
+  return result;
+}
+
+export function calculateSuggestedDailyMinutes(dueCards: number, unresolvedMistakes: number, daysToExam: number | null) {
+  if (daysToExam === null) return null;
+  return Math.max(15, Math.min(90, Math.ceil((dueCards * 4 + unresolvedMistakes * 8) / Math.max(1, daysToExam))));
+}
+
+export function calculateMaterialReviewState(materialId: number, hasFlashcards: boolean, dueMaterialIds: Set<number>, reviewedMaterialIds: Set<number>) {
+  if (!hasFlashcards) return "Not started";
+  if (dueMaterialIds.has(materialId)) return "Due practice";
+  return reviewedMaterialIds.has(materialId) ? "Reviewed" : "Ready to review";
+}
+
+export async function getSubjectInsights(ownerId: number, subjectId: number) {
+  const db = await requireDb();
+  await seedExistingFlashcardSchedules(ownerId, subjectId);
+  const [materialRows, setRows, dueCards, exams, mistakes, reviewRows] = await Promise.all([
+    db.select().from(materials).where(and(eq(materials.ownerId, ownerId), eq(materials.subjectId, subjectId))).orderBy(desc(materials.createdAt)),
+    db.select().from(studySets).where(and(eq(studySets.ownerId, ownerId), eq(studySets.subjectId, subjectId))),
+    getDueFlashcards(ownerId, subjectId),
+    db.select().from(examDates).where(and(eq(examDates.ownerId, ownerId), eq(examDates.subjectId, subjectId))).orderBy(examDates.occursAt),
+    db.select().from(mistakeNotes).where(and(eq(mistakeNotes.ownerId, ownerId), eq(mistakeNotes.subjectId, subjectId))).orderBy(desc(mistakeNotes.createdAt)),
+    db.select({ studySetId: flashcardReviews.studySetId }).from(flashcardReviews).innerJoin(studySets, eq(flashcardReviews.studySetId, studySets.id)).where(and(eq(flashcardReviews.ownerId, ownerId), eq(studySets.subjectId, subjectId))),
+  ]);
+  const byKind = new Map<string, Set<number>>();
+  setRows.forEach(set => {
+    const citedMaterialIds = byKind.get(set.kind) || new Set<number>();
+    collectCitationMaterialIds(set.payload).forEach(materialId => citedMaterialIds.add(materialId));
+    byKind.set(set.kind, citedMaterialIds);
+  });
+  const flashcardSets = new Map(setRows.filter(set => set.kind === "flashcards").map(set => [set.id, collectCitationMaterialIds(set.payload)]));
+  const dueMaterialIds = new Set<number>();
+  dueCards.forEach(({ studySet }) => flashcardSets.get(studySet.id)?.forEach(materialId => dueMaterialIds.add(materialId)));
+  const reviewedMaterialIds = new Set<number>();
+  reviewRows.forEach(review => flashcardSets.get(review.studySetId)?.forEach(materialId => reviewedMaterialIds.add(materialId)));
+  const coverage = materialRows.map(material => {
+    const flashcards = byKind.get("flashcards")?.has(material.id) || false;
+    return { materialId: material.id, title: material.title, archived: Boolean(material.archivedAt), summary: byKind.get("summary")?.has(material.id) || false, flashcards, quiz: byKind.get("quiz")?.has(material.id) || false, reviewState: calculateMaterialReviewState(material.id, flashcards, dueMaterialIds, reviewedMaterialIds), version: material.version };
+  });
+  const upcomingExam = exams.find(exam => exam.occursAt.getTime() >= Date.now()) || null;
+  const daysToExam = upcomingExam ? Math.max(0, Math.ceil((upcomingExam.occursAt.getTime() - Date.now()) / 86_400_000)) : null;
+  const unresolvedMistakes = mistakes.filter(note => !note.resolvedAt).length;
+  return { coverage, dueCards: dueCards.length, unresolvedMistakes, mistakes, exams, upcomingExam, daysToExam, suggestedDailyMinutes: calculateSuggestedDailyMinutes(dueCards.length, unresolvedMistakes, daysToExam) };
 }
