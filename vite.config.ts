@@ -164,6 +164,9 @@ export default defineConfig({
   envDir: path.resolve(import.meta.dirname),
   root: path.resolve(import.meta.dirname, "client"),
   publicDir: path.resolve(import.meta.dirname, "client", "public"),
+  // GitHub Pages serves this repository from /Kevin/, while local and Manus
+  // deployments are hosted at the domain root.
+  base: process.env.GITHUB_ACTIONS ? "/Kevin/" : "/",
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
