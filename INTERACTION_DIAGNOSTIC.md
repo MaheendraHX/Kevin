@@ -9,3 +9,5 @@ The public GitHub Pages JavaScript bundle is compiled without the required OAuth
 Direct browser checks confirm that both `/api/trpc/auth.me` and `/Kevin/api/trpc/auth.me` return HTTP 404 from the public Pages domain. The issue is therefore deployment architecture, not a hidden client exception: the full-stack application has been published to a static host that cannot serve its required API.
 
 The assigned full-stack domain, `https://kevinai-vjva5vux.manus.space`, loads Kevin and its Create workspace control correctly opens the valid Manus OAuth route with the configured application ID and callback URL. This is the accurate destination for a public Pages notice.
+
+Live verification after the public push confirms that `https://maheendrahx.github.io/Kevin/` now presents the static-source notice instead of an apparently functional but broken application. The primary visible link is the verified full-stack Kevin destination, alongside the public source repository link.
